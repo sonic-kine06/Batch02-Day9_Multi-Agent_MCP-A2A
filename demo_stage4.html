@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A2A Legal Multi-Agent Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; }
+        .node { transition: all 0.5s ease-in-out; }
+        .active-node { box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.5); border-color: #3b82f6; transform: scale(1.05); }
+        .inactive-node { opacity: 0.5; }
+        .agent-container { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; border-radius: 0.75rem; border: 2px solid #334155; background-color: #1e293b; width: 220px; text-align: center; }
+        .log-box { height: 300px; overflow-y: auto; scroll-behavior: smooth; font-family: monospace; }
+        .loading-dot { display: inline-block; width: 8px; height: 8px; margin: 0 2px; background-color: currentColor; border-radius: 50%; animation: blink 1.4s infinite both; }
+        .loading-dot:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+    </style>
+</head>
+<body class="p-8">
+    <div class="max-w-5xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 mb-2">Legal Multi-Agent A2A System</h1>
+            <p class="text-slate-400">Interactive Demo of Stage 4/5 Routing & Parallel Execution</p>
+        </header>
+
+        <div class="bg-slate-800 rounded-xl p-6 shadow-xl mb-10">
+            <div class="flex gap-4">
+                <input type="text" id="query-input" value="What happens if a company breaches an NDA and hides overseas revenue?" class="flex-1 bg-slate-700 text-white rounded-lg px-4 py-3 border border-slate-600 focus:outline-none focus:border-blue-500 transition-colors" placeholder="Ask a legal question...">
+                <button id="send-btn" onclick="startSimulation()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors">Send to System</button>
+            </div>
+        </div>
+
+        <!-- Visual Graph -->
+        <div class="relative py-12 px-4 mb-10 bg-slate-800/50 rounded-xl border border-slate-700/50">
+            
+            <div class="flex justify-center mb-16">
+                <div id="node-customer" class="node agent-container inactive-node relative">
+                    <div class="text-3xl mb-2">👩‍💼</div>
+                    <div class="font-bold text-blue-400 mb-1">Customer Agent</div>
+                    <div class="text-xs text-slate-400">Port: 10100</div>
+                    <!-- Status indicator -->
+                    <div id="status-customer" class="absolute -bottom-3 left-1/2 transform -translate-x-1/2 bg-slate-700 text-xs px-3 py-1 rounded-full opacity-0 transition-opacity">Working</div>
+                </div>
+            </div>
+
+            <div class="flex justify-center mb-16 relative">
+                <!-- Line connecting customer to law -->
+                <div class="absolute w-1 bg-slate-600 h-16 -top-16 left-1/2 transform -translate-x-1/2 z-0"></div>
+
+                <div id="node-law" class="node agent-container inactive-node relative z-10">
+                    <div class="text-3xl mb-2">⚖️</div>
+                    <div class="font-bold text-purple-400 mb-1">Law Agent</div>
+                    <div class="text-xs text-slate-400">Orchestrator (Port: 10101)</div>
+                    <div id="status-law" class="absolute -bottom-3 left-1/2 transform -translate-x-1/2 bg-slate-700 text-xs px-3 py-1 rounded-full opacity-0 transition-opacity">Routing...</div>
+                </div>
+            </div>
+
+            <!-- Parallel Specialists -->
+            <div class="flex justify-center gap-12 relative">
+                <!-- Connecting lines from Law to Specialists -->
+                <svg class="absolute inset-0 w-full h-full -top-16 z-0 pointer-events-none" style="min-height: 100px;">
+                    <path id="line-tax" d="M 50% 0 L 30% 60" fill="none" stroke="#475569" stroke-width="4" stroke-dasharray="5,5" class="opacity-50 transition-all duration-500" />
+                    <path id="line-comp" d="M 50% 0 L 50% 60" fill="none" stroke="#475569" stroke-width="4" stroke-dasharray="5,5" class="opacity-50 transition-all duration-500" />
+                    <path id="line-priv" d="M 50% 0 L 70% 60" fill="none" stroke="#475569" stroke-width="4" stroke-dasharray="5,5" class="opacity-50 transition-all duration-500" />
+                </svg>
+
+                <div id="node-tax" class="node agent-container inactive-node relative z-10 w-48">
+                    <div class="text-3xl mb-2">💰</div>
+                    <div class="font-bold text-green-400 mb-1">Tax Agent</div>
+                    <div class="text-xs text-slate-400">Port: 10102</div>
+                    <div id="status-tax" class="absolute -bottom-3 left-1/2 transform -translate-x-1/2 bg-slate-700 text-xs px-3 py-1 rounded-full opacity-0 transition-opacity">Researching</div>
+                </div>
+
+                <div id="node-comp" class="node agent-container inactive-node relative z-10 w-48">
+                    <div class="text-3xl mb-2">🏢</div>
+                    <div class="font-bold text-orange-400 mb-1">Compliance Agent</div>
+                    <div class="text-xs text-slate-400">Port: 10103</div>
+                    <div id="status-comp" class="absolute -bottom-3 left-1/2 transform -translate-x-1/2 bg-slate-700 text-xs px-3 py-1 rounded-full opacity-0 transition-opacity">Researching</div>
+                </div>
+
+                <div id="node-priv" class="node agent-container inactive-node relative z-10 w-48">
+                    <div class="text-3xl mb-2">🔒</div>
+                    <div class="font-bold text-teal-400 mb-1">Privacy Agent</div>
+                    <div class="text-xs text-slate-400">Port: 10104</div>
+                    <div id="status-priv" class="absolute -bottom-3 left-1/2 transform -translate-x-1/2 bg-slate-700 text-xs px-3 py-1 rounded-full opacity-0 transition-opacity">Researching</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-6">
+            <div class="bg-slate-900 rounded-xl border border-slate-700 overflow-hidden">
+                <div class="bg-slate-800 px-4 py-2 border-b border-slate-700 flex items-center justify-between">
+                    <span class="text-sm font-semibold text-slate-300">A2A System Logs</span>
+                    <button onclick="document.getElementById('logs').innerHTML=''" class="text-xs text-slate-500 hover:text-white">Clear</button>
+                </div>
+                <div id="logs" class="log-box p-4 text-xs text-green-400 space-y-1">
+                    <div>> System initialized. Registry active at :10000.</div>
+                    <div>> Waiting for incoming requests...</div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 rounded-xl border border-slate-600 overflow-hidden shadow-2xl">
+                <div class="bg-blue-600 px-4 py-2 flex items-center">
+                    <span class="text-sm font-bold text-white">Final Answer</span>
+                </div>
+                <div id="final-answer" class="p-6 text-sm text-slate-200 leading-relaxed min-h-[300px] whitespace-pre-wrap flex items-center justify-center">
+                    <span class="text-slate-500 italic">Waiting for query...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        
+        function log(msg, color = 'text-green-400') {
+            const logs = document.getElementById('logs');
+            const time = new Date().toISOString().split('T')[1].substring(0, 8);
+            logs.innerHTML += `<div class="${color}"><span class="text-slate-500">[${time}]</span> ${msg}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function setNodeState(nodeId, isActive, statusText = '') {
+            const el = document.getElementById(`node-${nodeId}`);
+            const statusEl = document.getElementById(`status-${nodeId}`);
+            
+            if (isActive) {
+                el.classList.remove('inactive-node');
+                el.classList.add('active-node');
+                if(statusText) {
+                    statusEl.innerHTML = statusText + '<span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
+                    statusEl.classList.remove('opacity-0');
+                }
+            } else {
+                el.classList.add('inactive-node');
+                el.classList.remove('active-node');
+                statusEl.classList.add('opacity-0');
+            }
+        }
+
+        function animateLine(lineId, active) {
+            const line = document.getElementById(`line-${lineId}`);
+            if (active) {
+                line.setAttribute('stroke', '#3b82f6');
+                line.classList.remove('opacity-50');
+                line.classList.add('opacity-100');
+            } else {
+                line.setAttribute('stroke', '#475569');
+                line.classList.add('opacity-50');
+                line.classList.remove('opacity-100');
+            }
+        }
+
+        async function startSimulation() {
+            const btn = document.getElementById('send-btn');
+            const answerBox = document.getElementById('final-answer');
+            const query = document.getElementById('query-input').value;
+            
+            if(!query) return;
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            answerBox.innerHTML = '<div class="text-center text-slate-400">Processing request...<br><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></div>';
+            
+            const traceId = 'tr_' + Math.random().toString(36).substring(2, 9);
+            log(`New Request | trace_id: ${traceId}`, 'text-blue-400 font-bold');
+            
+            // Customer Agent
+            setNodeState('customer', true, 'Processing');
+            log(`[CustomerAgent] Received query: "${query}"`);
+            await sleep(1000);
+            log(`[CustomerAgent] Delegating to Law Agent (Discovery via Registry)`);
+            setNodeState('customer', false);
+            
+            // Law Agent (Analyze + Route)
+            setNodeState('law', true, 'Analyzing');
+            log(`[LawAgent] Performing analyze_law()...`);
+            await sleep(1500);
+            
+            const qLower = query.toLowerCase();
+            const needsTax = qLower.includes('tax') || qLower.includes('revenue');
+            const needsComp = qLower.includes('compliance') || qLower.includes('sec');
+            const needsPriv = qLower.includes('privacy') || qLower.includes('data');
+            
+            log(`[LawAgent] check_routing() -> needs_tax:${needsTax}, needs_compliance:${needsComp}, needs_privacy:${needsPriv}`);
+            setNodeState('law', true, 'Dispatching');
+            await sleep(1000);
+
+            // Parallel Execution
+            log(`[LawAgent] Dispatching Send() requests in PARALLEL...`, 'text-purple-400 font-bold');
+            
+            let promises = [];
+            
+            if (needsTax) {
+                promises.push((async () => {
+                    animateLine('tax', true);
+                    setNodeState('tax', true, 'Researching');
+                    log(`[TaxAgent] Starting ReAct tool-call loop...`);
+                    await sleep(2000 + Math.random() * 1000);
+                    log(`[TaxAgent] Found relevant statutes (IRC 6663)`);
+                    setNodeState('tax', false);
+                    animateLine('tax', false);
+                })());
+            }
+            
+            if (needsComp) {
+                promises.push((async () => {
+                    animateLine('comp', true);
+                    setNodeState('comp', true, 'Researching');
+                    log(`[ComplianceAgent] Starting ReAct tool-call loop...`);
+                    await sleep(1500 + Math.random() * 1000);
+                    log(`[ComplianceAgent] Found relevant regulations (SEC)`);
+                    setNodeState('comp', false);
+                    animateLine('comp', false);
+                })());
+            }
+            
+            if (needsPriv || (!needsTax && !needsComp)) {
+                // Ensure at least one runs if no keywords match, just for demo
+                promises.push((async () => {
+                    animateLine('priv', true);
+                    setNodeState('priv', true, 'Researching');
+                    log(`[PrivacyAgent] Starting ReAct tool-call loop...`);
+                    await sleep(1800 + Math.random() * 1000);
+                    log(`[PrivacyAgent] Found GDPR/CCPA references`);
+                    setNodeState('priv', false);
+                    animateLine('priv', false);
+                })());
+            }
+            
+            await Promise.all(promises);
+            
+            // Law Agent Aggregate
+            log(`[LawAgent] All parallel branches completed. Aggregating results...`, 'text-yellow-400');
+            setNodeState('law', true, 'Aggregating');
+            await sleep(2000);
+            setNodeState('law', false);
+            
+            // Customer Agent Final
+            setNodeState('customer', true, 'Finalizing');
+            log(`[CustomerAgent] Formatting final response for user...`);
+            await sleep(800);
+            setNodeState('customer', false);
+            
+            // Show result
+            log(`Request complete | trace_id: ${traceId}`, 'text-blue-400 font-bold');
+            answerBox.innerHTML = `
+                <h3 class="font-bold text-lg text-white mb-2">Legal Synthesis:</h3>
+                <p class="mb-4">Based on the analysis from our specialist legal agents:</p>
+                <ul class="list-disc pl-5 space-y-2 mb-4">
+                    ${needsTax ? '<li><strong class="text-green-400">Tax Liabilities:</strong> Potential civil fraud penalties (up to 75% underpayment) and FBAR violations for offshore revenue.</li>' : ''}
+                    ${needsComp ? '<li><strong class="text-orange-400">Regulatory Compliance:</strong> The company may face SEC enforcement actions.</li>' : ''}
+                    ${needsPriv || (!needsTax && !needsComp) ? '<li><strong class="text-teal-400">Data Privacy:</strong> Breach of user data without consent violates CCPA/GDPR leading to severe statutory fines.</li>' : ''}
+                </ul>
+                <p class="text-xs text-slate-400 mt-6 pt-4 border-t border-slate-700">Disclaimer: This is generated by AI agents for demonstration purposes. Not actual legal advice.</p>
+            `;
+            
+            btn.disabled = false;
+            btn.classList.remove('opacity-50');
+        }
+    </script>
+</body>
+</html>

@@ -114,8 +114,10 @@ class LegalState(TypedDict):
     law_analysis: str
     needs_tax: bool
     needs_compliance: bool
+    needs_privacy: bool
     tax_result: Annotated[str, _last_wins]
     compliance_result: Annotated[str, _last_wins]
+    privacy_result: Annotated[str, _last_wins]
     final_answer: str
 
 
@@ -170,12 +172,17 @@ async def check_routing(state: LegalState) -> dict:
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        parsed = {"needs_tax": True, "needs_compliance": True}
+        parsed = {"needs_tax": True, "needs_compliance": True, "needs_privacy": True}
 
     needs_tax = bool(parsed.get("needs_tax", True))
     needs_compliance = bool(parsed.get("needs_compliance", True))
-    print(f"  [Node: check_routing] needs_tax={needs_tax}, needs_compliance={needs_compliance}")
-    return {"needs_tax": needs_tax, "needs_compliance": needs_compliance}
+    
+    # Conditional routing for privacy based on keywords
+    question_lower = state["question"].lower()
+    needs_privacy = any(kw in question_lower for kw in ["data", "privacy", "gdpr", "dữ liệu"])
+    
+    print(f"  [Node: check_routing] needs_tax={needs_tax}, needs_compliance={needs_compliance}, needs_privacy={needs_privacy}")
+    return {"needs_tax": needs_tax, "needs_compliance": needs_compliance, "needs_privacy": needs_privacy}
 
 
 def route_to_specialists(state: LegalState) -> list[Send]:
@@ -185,6 +192,8 @@ def route_to_specialists(state: LegalState) -> list[Send]:
         sends.append(Send("call_tax_specialist", state))
     if state.get("needs_compliance"):
         sends.append(Send("call_compliance_specialist", state))
+    if state.get("needs_privacy"):
+        sends.append(Send("privacy_agent", state))
     if not sends:
         sends.append(Send("aggregate", state))
     return sends
@@ -235,6 +244,25 @@ async def call_compliance_specialist(state: LegalState) -> dict:
     return {"compliance_result": final_msg}
 
 
+async def privacy_agent(state: LegalState) -> dict:
+    """Agent chuyên về luật bảo vệ dữ liệu cá nhân."""
+    print("\n  [Node: privacy_agent] Privacy specialist agent starting...")
+    llm = get_llm()
+    
+    prompt = f"""Bạn là chuyên gia về GDPR và luật bảo vệ dữ liệu cá nhân.
+    
+Câu hỏi gốc: {state['question']}
+Phân tích pháp lý: {state.get('law_analysis', 'N/A')}
+
+Hãy phân tích các vấn đề về privacy và GDPR (nếu có).
+"""
+    
+    result = await llm.ainvoke([HumanMessage(content=prompt)])
+    final_msg = result.content
+    print(f"  [Node: privacy_agent] Done ({len(final_msg)} chars)")
+    return {"privacy_result": final_msg}
+
+
 async def aggregate(state: LegalState) -> dict:
     """Combine all specialist analyses into a final comprehensive answer."""
     print("\n  [Node: aggregate] Combining all specialist analyses...")
@@ -247,6 +275,8 @@ async def aggregate(state: LegalState) -> dict:
         sections.append(f"## Tax Analysis\n{state['tax_result']}")
     if state.get("compliance_result"):
         sections.append(f"## Regulatory Compliance Analysis\n{state['compliance_result']}")
+    if state.get("privacy_result"):
+        sections.append(f"## Privacy Analysis\n{state['privacy_result']}")
 
     combined = "\n\n---\n\n".join(sections)
 
@@ -278,6 +308,7 @@ def create_graph():
     graph.add_node("check_routing", check_routing)
     graph.add_node("call_tax_specialist", call_tax_specialist)
     graph.add_node("call_compliance_specialist", call_compliance_specialist)
+    graph.add_node("privacy_agent", privacy_agent)
     graph.add_node("aggregate", aggregate)
 
     graph.set_entry_point("analyze_law")
@@ -285,10 +316,11 @@ def create_graph():
     graph.add_conditional_edges(
         "check_routing",
         route_to_specialists,
-        ["call_tax_specialist", "call_compliance_specialist", "aggregate"],
+        ["call_tax_specialist", "call_compliance_specialist", "privacy_agent", "aggregate"],
     )
     graph.add_edge("call_tax_specialist", "aggregate")
     graph.add_edge("call_compliance_specialist", "aggregate")
+    graph.add_edge("privacy_agent", "aggregate")
     graph.add_edge("aggregate", END)
 
     return graph.compile()
